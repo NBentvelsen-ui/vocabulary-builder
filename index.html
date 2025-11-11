@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vocabulary Builder</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body>
+    <div id="root"></div>
+    <script type="text/babel">
+        import React, { useState, useEffect } from 'react';
+import { X, Plus, BookOpen, Search, Loader } from 'lucide-react';
+
+export default function VocabularyBuilder() {
+  const [words, setWords] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [selectedWord, setSelectedWord] = useState(null);
+  const [selectedCategory, setSelectedCategory] = useState('All');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [formData, setFormData] = useState({
+    word: '',
+    meaning: '',
+    sentence: '',
+    synonyms: '',
+    category: ''
+  });
+
+  // Load words from database on mount
+  useEffect(() => {
+    loadWords();
+  }, []);
+
+  const loadWords = async () => {
+    try {
+      setLoading(true);
+      const result = await window.storage.list('word:', false);
+      
+      if (result && result.keys && result.keys.length > 0) {
+        const loadedWords = [];
+        for (const key of result.keys) {
+          try {
+            const data = await window.storage.get(key, false);
+            if (data && data.value) {
+              loadedWords.push(JSON.parse(data.value));
+            }
+          } catch (err) {
+            console.log('Skipping key:', key);
+          }
+        }
+        setWords(loadedWords);
+      } else {
+        // Add example words if database is empty
+        const exampleWords = [
+          {
+            id: Date.now(),
+            word: 'Ephemeral',
+            meaning: 'Lasting for a very short time',
+            sentence: 'The beauty of cherry blossoms is ephemeral, lasting only a few weeks each spring.',
+            synonyms: 'fleeting, transient, temporary',
+            category: 'Adjectives'
+          },
+          {
+            id: Date.now() + 1,
+            word: 'Serendipity',
+            meaning: 'The occurrence of events by chance in a happy way',
+            sentence: 'Finding that rare book at the flea market was pure serendipity.',
+            synonyms: 'luck, fortune, chance',
+            category: 'Nouns'
+          }
+        ];
+        
+        for (const word of exampleWords) {
+          await window.storage.set(`word:${word.id}`, JSON.stringify(word), false);
+        }
+        setWords(exampleWords);
+      }
+    } catch (error) {
+      console.error('Error loading words:', error);
+      setWords([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const categories = ['All', ...new Set(words.map(w => w.category).filter(Boolean))];
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (formData.word && formData.meaning) {
+      const newWord = { ...formData, id: Date.now() };
+      
+      try {
+        await window.storage.set(`word:${newWord.id}`, JSON.stringify(newWord), false);
+        setWords([...words, newWord]);
+        setFormData({ word: '', meaning: '', sentence: '', synonyms: '', category: '' });
+        setShowForm(false);
+      } catch (error) {
+        console.error('Error saving word:', error);
+        alert('Failed to save word. Please try again.');
+      }
+    }
+  };
+
+  const handleDelete = async (id) => {
+    try {
+      await window.storage.delete(`word:${id}`, false);
+      setWords(words.filter(w => w.id !== id));
+      setSelectedWord(null);
+    } catch (error) {
+      console.error('Error deleting word:', error);
+      alert('Failed to delete word. Please try again.');
+    }
+  };
+
+  const filteredWords = words.filter(w => {
+    const matchesCategory = selectedCategory === 'All' || w.category === selectedCategory;
+    const matchesSearch = w.word.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         w.meaning.toLowerCase().includes(searchTerm.toLowerCase());
+    return matchesCategory && matchesSearch;
+  });
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 flex items-center justify-center">
+        <div className="text-center">
+          <Loader className="w-12 h-12 text-indigo-600 animate-spin mx-auto mb-4" />
+          <p className="text-gray-600">Loading your vocabulary...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 p-6 pb-32">
+      <div className="max-w-6xl mx-auto">
+        {/* Header */}
+        <div className="text-center mb-8">
+          <div className="flex items-center justify-center gap-3 mb-2">
+            <BookOpen className="w-10 h-10 text-indigo-600" />
+            <h1 className="text-4xl font-bold text-gray-800">Vocabulary Builder</h1>
+          </div>
+          <p className="text-gray-600">Expand your lexicon, one word at a time</p>
+        </div>
+
+        {/* Category Filter */}
+        <div className="mb-6 flex justify-center">
+          <div className="inline-flex gap-2 bg-white rounded-lg shadow-sm p-2 flex-wrap">
+            {categories.map(cat => (
+              <button
+                key={cat}
+                onClick={() => setSelectedCategory(cat)}
+                className={`px-4 py-2 rounded-md font-medium transition-colors ${
+                  selectedCategory === cat
+                    ? 'bg-indigo-600 text-white'
+                    : 'text-gray-600 hover:bg-gray-100'
+                }`}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Word Pills Grid */}
+        <div className="flex flex-wrap gap-3 justify-center mb-6">
+          {filteredWords.length === 0 ? (
+            <div className="text-center py-12 text-gray-500 w-full">
+              <BookOpen className="w-16 h-16 mx-auto mb-4 text-gray-300" />
+              <p className="text-lg">No words found. Start building your vocabulary!</p>
+            </div>
+          ) : (
+            filteredWords.map((word) => (
+              <button
+                key={word.id}
+                onClick={() => setSelectedWord(word)}
+                className="px-4 py-2 bg-white text-indigo-600 rounded-full shadow-sm hover:shadow-md hover:scale-105 transition-all font-medium border-2 border-transparent hover:border-indigo-200"
+              >
+                {word.word}
+              </button>
+            ))
+          )}
+        </div>
+
+        {/* Stats */}
+        <div className="text-center text-gray-500">
+          <p className="text-sm">
+            Total words: <span className="font-semibold text-indigo-600">{words.length}</span>
+            {selectedCategory !== 'All' && (
+              <span> • Showing: <span className="font-semibold text-indigo-600">{filteredWords.length}</span></span>
+            )}
+          </p>
+        </div>
+
+        {/* Word Detail Modal */}
+        {selectedWord && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50" onClick={() => setSelectedWord(null)}>
+            <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full" onClick={(e) => e.stopPropagation()}>
+              <div className="p-6">
+                <div className="flex items-start justify-between mb-4">
+                  <div>
+                    <h3 className="text-3xl font-bold text-indigo-600 mb-2">{selectedWord.word}</h3>
+                    {selectedWord.category && (
+                      <span className="inline-block px-3 py-1 bg-indigo-100 text-indigo-700 text-xs rounded-full font-medium">
+                        {selectedWord.category}
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => setSelectedWord(null)}
+                    className="text-gray-400 hover:text-gray-600"
+                  >
+                    <X className="w-6 h-6" />
+                  </button>
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-500 mb-2">Meaning</p>
+                    <p className="text-gray-800 text-lg">{selectedWord.meaning}</p>
+                  </div>
+
+                  {selectedWord.sentence && (
+                    <div>
+                      <p className="text-sm font-semibold text-gray-500 mb-2">Example</p>
+                      <p className="text-gray-700 italic">"{selectedWord.sentence}"</p>
+                    </div>
+                  )}
+
+                  {selectedWord.synonyms && (
+                    <div>
+                      <p className="text-sm font-semibold text-gray-500 mb-2">Synonyms</p>
+                      <p className="text-gray-700">{selectedWord.synonyms}</p>
+                    </div>
+                  )}
+                </div>
+
+                <div className="mt-6 pt-4 border-t border-gray-200">
+                  <button
+                    onClick={() => handleDelete(selectedWord.id)}
+                    className="w-full py-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors font-medium"
+                  >
+                    Delete Word
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Add Word Form Modal */}
+        {showForm && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50" onClick={() => setShowForm(false)}>
+            <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+              <div className="p-6">
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="text-2xl font-bold text-gray-800">Add New Word</h2>
+                  <button
+                    onClick={() => setShowForm(false)}
+                    className="text-gray-400 hover:text-gray-600"
+                  >
+                    <X className="w-6 h-6" />
+                  </button>
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Word *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={formData.word}
+                      onChange={(e) => setFormData({ ...formData, word: e.target.value })}
+                      className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
+                      placeholder="Enter the word"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Meaning *
+                    </label>
+                    <textarea
+                      required
+                      value={formData.meaning}
+                      onChange={(e) => setFormData({ ...formData, meaning: e.target.value })}
+                      className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
+                      placeholder="Define the word"
+                      rows="2"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Example Sentence
+                    </label>
+                    <textarea
+                      value={formData.sentence}
+                      onChange={(e) => setFormData({ ...formData, sentence: e.target.value })}
+                      className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
+                      placeholder="Use the word in a sentence"
+                      rows="2"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Synonyms
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.synonyms}
+                      onChange={(e) => setFormData({ ...formData, synonyms: e.target.value })}
+                      className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
+                      placeholder="Similar words (comma-separated)"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Category
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.category}
+                      onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                      className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
+                      placeholder="e.g., Nouns, Adjectives, Business, Academic"
+                    />
+                  </div>
+
+                  <div className="flex gap-3 pt-4">
+                    <button
+                      onClick={handleSubmit}
+                      disabled={!formData.word || !formData.meaning}
+                      className="flex-1 bg-indigo-600 text-white py-2 rounded-lg hover:bg-indigo-700 transition-colors font-medium disabled:bg-gray-300 disabled:cursor-not-allowed"
+                    >
+                      Save Word
+                    </button>
+                    <button
+                      onClick={() => setShowForm(false)}
+                      className="flex-1 bg-gray-100 text-gray-700 py-2 rounded-lg hover:bg-gray-200 transition-colors font-medium"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Bottom Bar with Search and Add Button */}
+        <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-lg p-4 z-40">
+          <div className="max-w-6xl mx-auto flex gap-3">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+              <input
+                type="text"
+                placeholder="Search words..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
+              />
+            </div>
+            <button
+              onClick={() => setShowForm(true)}
+              className="flex items-center gap-2 bg-indigo-600 text-white px-6 py-3 rounded-lg hover:bg-indigo-700 transition-colors shadow-sm font-medium"
+            >
+              <Plus className="w-5 h-5" />
+              Add Word
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+    </script>
+</body>
+</html>
