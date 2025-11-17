@@ -4,160 +4,175 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Vocabulary Builder</title>
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+
+    <!-- React CDN -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+
+    <!-- Babel -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- Tailwind -->
     <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Lucide Icons (no imports needed) -->
+    <script src="https://unpkg.com/lucide@latest"></script>
 </head>
-<body>
-    <div id="root"></div>
-    <script type="text/babel">
-        import React, { useState, useEffect } from 'react';
-        import { X, Plus, BookOpen, Search, Loader } from 'lucide-react';
+<body class="bg-gradient-to-br from-blue-50 to-indigo-50">
 
-        function exportToExcel(words) {
-            const header = ["Word","Meaning","Sentence","Synonyms","Category"]; 
-            const rows = words.map(w => [w.word, w.meaning, w.sentence || "", w.synonyms || "", w.category || ""]);
+<div id="root"></div>
 
-            let csvContent = "data:text/csv;charset=utf-8,";
-            csvContent += header.join(",") + "\n";
-            rows.forEach(r => { csvContent += r.join(",") + "\n"; });
+<script type="text/babel">
+// Icons via lucide.createIcons()
+setTimeout(() => lucide.createIcons(), 0);
 
-            const encodedUri = encodeURI(csvContent);
-            const link = document.createElement("a");
-            link.setAttribute("href", encodedUri);
-            link.setAttribute("download", "vocabulary_export.csv");
-            document.body.appendChild(link);
-            link.click();
+function VocabularyBuilder() {
+  const [words, setWords] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [showForm, setShowForm] = React.useState(false);
+  const [selectedWord, setSelectedWord] = React.useState(null);
+  const [selectedCategory, setSelectedCategory] = React.useState("All");
+  const [searchTerm, setSearchTerm] = React.useState("");
+
+  const [formData, setFormData] = React.useState({
+    word: "",
+    meaning: "",
+    sentence: "",
+    synonyms: "",
+    category: ""
+  });
+
+  React.useEffect(() => {
+    loadWords();
+  }, []);
+
+  async function loadWords() {
+    try {
+      const result = await window.storage.list("word:", false);
+      let loaded = [];
+
+      if (result?.keys?.length) {
+        for (let key of result.keys) {
+          const data = await window.storage.get(key, false);
+          if (data?.value) loaded.push(JSON.parse(data.value));
         }
+      } else {
+        const examples = [
+          { id: Date.now(), word: "Ephemeral", meaning: "Short-lived", category: "Adjective" },
+          { id: Date.now() + 1, word: "Serendipity", meaning: "Happy accident", category: "Noun" }
+        ];
+        for (let w of examples)
+          await window.storage.set(`word:${w.id}`, JSON.stringify(w), false);
+        loaded = examples;
+      }
 
-        export default function VocabularyBuilder() {
-          const [words, setWords] = useState([]);
-          const [loading, setLoading] = useState(true);
-          const [showForm, setShowForm] = useState(false);
-          const [selectedWord, setSelectedWord] = useState(null);
-          const [selectedCategory, setSelectedCategory] = useState('All');
-          const [searchTerm, setSearchTerm] = useState('');
-          const [formData, setFormData] = useState({ word:'', meaning:'', sentence:'', synonyms:'', category:'' });
+      setWords(loaded);
+    } finally {
+      setLoading(false);
+    }
+  }
 
-          useEffect(() => { loadWords(); }, []);
+  function exportToExcel() {
+    const header = ["Word","Meaning","Sentence","Synonyms","Category"];
+    const rows = words.map(w => [w.word, w.meaning, w.sentence || "", w.synonyms || "", w.category || ""]);
 
-          const loadWords = async () => {
-            try {
-              setLoading(true);
-              const result = await window.storage.list('word:', false);
+    let csv = header.join(",") + "\n";
+    rows.forEach(r => (csv += r.join(",") + "\n"));
 
-              if (result && result.keys && result.keys.length > 0) {
-                const loadedWords = [];
-                for (const key of result.keys) {
-                  try {
-                    const data = await window.storage.get(key, false);
-                    if (data && data.value) loadedWords.push(JSON.parse(data.value));
-                  } catch {}
-                }
-                setWords(loadedWords);
-              } else {
-                const exampleWords = [
-                  { id: Date.now(), word:'Ephemeral', meaning:'Lasting a short time', sentence:'', synonyms:'', category:'Adjectives' },
-                  { id: Date.now()+1, word:'Serendipity', meaning:'Happy accident', sentence:'', synonyms:'', category:'Nouns' }
-                ];
-                for (const w of exampleWords) {
-                  await window.storage.set(`word:${w.id}`, JSON.stringify(w), false);
-                }
-                setWords(exampleWords);
-              }
-            } finally {
-              setLoading(false);
-            }
-          };
+    const blob = new Blob([csv], { type: "text/csv" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = "vocabulary_export.csv";
+    link.click();
+  }
 
-          const categories = ['All', ...new Set(words.map(w => w.category).filter(Boolean))];
+  const filteredWords = words.filter(w => {
+    const c = selectedCategory === "All" || w.category === selectedCategory;
+    const s = w.word.toLowerCase().includes(searchTerm.toLowerCase());
+    return c && s;
+  });
 
-          const handleSubmit = async (e) => {
-            e.preventDefault();
-            if (!formData.word || !formData.meaning) return;
-            const newWord = { ...formData, id: Date.now() };
-            await window.storage.set(`word:${newWord.id}`, JSON.stringify(newWord), false);
-            setWords([...words, newWord]);
-            setShowForm(false);
-            setFormData({ word:'', meaning:'', sentence:'', synonyms:'', category:'' });
-          };
+  async function saveWord() {
+    const nw = { ...formData, id: Date.now() };
+    await window.storage.set(`word:${nw.id}`, JSON.stringify(nw), false);
+    setWords([...words, nw]);
+    setFormData({ word:"", meaning:"", sentence:"", synonyms:"", category:"" });
+    setShowForm(false);
+  }
 
-          const handleDelete = async (id) => {
-            await window.storage.delete(`word:${id}`, false);
-            setWords(words.filter(w => w.id !== id));
-            setSelectedWord(null);
-          };
+  async function deleteWord(id) {
+    await window.storage.delete(`word:${id}`, false);
+    setWords(words.filter(w => w.id !== id));
+    setSelectedWord(null);
+  }
 
-          const filteredWords = words.filter(w => {
-            const matchesCategory = selectedCategory === 'All' || w.category === selectedCategory;
-            const matchesSearch = w.word.toLowerCase().includes(searchTerm.toLowerCase()) || w.meaning.toLowerCase().includes(searchTerm.toLowerCase());
-            return matchesCategory && matchesSearch;
-          });
+  if (loading) return <div className="min-h-screen flex items-center justify-center text-lg">Loading…</div>;
 
-          if (loading) {
-            return (<div className="min-h-screen flex items-center justify-center">Loading...</div>);
-          }
+  return (
+    <div className="p-6 pb-28 max-w-4xl mx-auto">
 
-          return (
-            <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 p-6 pb-32">
-              <div className="max-w-6xl mx-auto">
+      <div className="text-center mb-8">
+        <h1 className="text-4xl font-bold text-indigo-700 flex justify-center gap-2 items-center">
+          <i data-lucide="book-open" class="w-10 h-10"></i> Vocabulary Builder
+        </h1>
 
-                <div className="text-center mb-8">
-                  <div className="flex items-center justify-center gap-3 mb-2">
-                    <BookOpen className="w-10 h-10 text-indigo-600" />
-                    <h1 className="text-4xl font-bold text-gray-800">Vocabulary Builder</h1>
-                  </div>
-                  <button
-                    onClick={() => exportToExcel(words)}
-                    className="mt-4 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700"
-                  >
-                    Export to Excel
-                  </button>
-                </div>
+        <button onClick={exportToExcel} className="mt-4 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700">
+          Export to Excel
+        </button>
+      </div>
 
-                <div className="mb-6 flex justify-center">
-                  <div className="inline-flex gap-2 bg-white rounded-lg shadow-sm p-2 flex-wrap">
-                    {categories.map(cat => (
-                      <button key={cat} onClick={() => setSelectedCategory(cat)} className={`px-4 py-2 rounded-md font-medium ${selectedCategory===cat?'bg-indigo-600 text-white':'text-gray-600 hover:bg-gray-100'}`}>{cat}</button>
-                    ))}
-                  </div>
-                </div>
+      <div className="flex justify-center mb-4">
+        <input className="px-3 py-2 rounded border w-64" placeholder="Search…" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+      </div>
 
-                <div className="flex flex-wrap gap-3 justify-center mb-6">
-                  {filteredWords.map((word)=>(
-                    <button key={word.id} onClick={()=>setSelectedWord(word)} className="px-4 py-2 bg-white text-indigo-600 rounded-full shadow-sm hover:scale-105">{word.word}</button>
-                  ))}
-                </div>
+      <div className="flex flex-wrap gap-3 justify-center mb-8">
+        {filteredWords.map(w => (
+          <button key={w.id} className="px-4 py-2 bg-white rounded-full shadow hover:scale-105 border" onClick={() => setSelectedWord(w)}>
+            {w.word}
+          </button>
+        ))}
+      </div>
 
-                {/* Detail Modal */}
-                {selectedWord && (
-                  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4" onClick={()=>setSelectedWord(null)}>
-                    <div className="bg-white rounded-xl p-6 w-full max-w-lg" onClick={(e)=>e.stopPropagation()}>
-                      <h3 className="text-3xl font-bold text-indigo-600 mb-2">{selectedWord.word}</h3>
-                      <p className="text-gray-700">{selectedWord.meaning}</p>
-                      <button className="mt-6 w-full py-2 text-red-600" onClick={()=>handleDelete(selectedWord.id)}>Delete</button>
-                    </div>
-                  </div>
-                )}
+      <div className="fixed bottom-0 left-0 right-0 bg-white p-4 border-t shadow-lg flex justify-center">
+        <button onClick={() => setShowForm(true)} className="bg-indigo-600 text-white px-6 py-3 rounded-lg flex items-center gap-2">
+          <i data-lucide="plus" class="w-5 h-5"></i> Add Word
+        </button>
+      </div>
 
-                {/* Add Word Button */}
-                <div className="fixed bottom-0 left-0 right-0 bg-white p-4 border-t">
-                  <div className="max-w-6xl mx-auto flex gap-3">
-                    <div className="relative flex-1">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
-                      <input type="text" value={searchTerm} onChange={(e)=>setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-3 border rounded-lg" placeholder="Search words..." />
-                    </div>
-                    <button onClick={()=>setShowForm(true)} className="bg-indigo-600 text-white px-6 py-3 rounded-lg">+ Add Word</button>
-                  </div>
-                </div>
+      {showForm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4" onClick={() => setShowForm(false)}>
+          <div className="bg-white rounded-xl p-6 w-full max-w-lg" onClick={e => e.stopPropagation()}>
+            <h2 className="text-2xl font-bold mb-4">Add Word</h2>
 
-              </div>
-            </div>
-          );
-        }
+            {Object.keys(formData).map(key => (
+              <input
+                key={key}
+                className="w-full mb-3 p-2 border rounded"
+                placeholder={key}
+                value={formData[key]}
+                onChange={e => setFormData({ ...formData, [key]: e.target.value })}
+              />
+            ))}
 
-        ReactDOM.createRoot(document.getElementById("root")).render(<VocabularyBuilder />);
-    </script>
+            <button onClick={saveWord} className="w-full bg-indigo-600 text-white py-2 rounded-lg mt-2">Save</button>
+          </div>
+        </div>
+      )}
+
+      {selectedWord && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4" onClick={() => setSelectedWord(null)}>
+          <div className="bg-white rounded-xl p-6 w-full max-w-lg" onClick={e => e.stopPropagation()}>
+            <h2 className="text-3xl font-bold text-indigo-600 mb-2">{selectedWord.word}</h2>
+            <p className="mb-4">{selectedWord.meaning}</p>
+            <button onClick={() => deleteWord(selectedWord.id)} className="w-full py-2 text-red-600 border rounded-lg">Delete</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<VocabularyBuilder />);
+</script>
 </body>
 </html>
