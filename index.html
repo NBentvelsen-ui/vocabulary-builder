@@ -105,6 +105,7 @@ function VocabularyBuilder() {
     let csv = header.join(",") + "
 ";
     rows.forEach(r => (csv += r.join(",") + "
+"));(r => (csv += r.join(",") + "
 "));
 
     const blob = new Blob([csv], { type: "text/csv" });
